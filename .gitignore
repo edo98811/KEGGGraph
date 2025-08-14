@@ -1,0 +1,76 @@
+# --------------------------
+# R / RStudio files
+# --------------------------
+
+# History files
+.Rhistory
+.Rapp.history
+
+# Session / workspace data
+.RData
+.Ruserdata
+
+# RStudio project-specific files
+.Rproj.user/
+*.Rproj
+.Rbuildignore
+
+# Compiled code / shared objects
+*.so
+*.dll
+*.o
+*.obj
+
+# Check / output folders
+.Rcheck/
+docs/
+
+# Temporary files
+*.tmp
+*.log
+
+# --------------------------
+# VS Code files
+# --------------------------
+
+# VS Code workspace settings
+.vscode/
+
+# --------------------------
+# macOS system files
+# --------------------------
+
+# Finder metadata
+.DS_Store
+
+# Thumbnails
+.AppleDouble
+.LSOverride
+
+# Icon files
+Icon?
+
+# Spotlight
+.Spotlight-V100
+.Trashes
+
+# --------------------------
+# Optional: R Markdown / knitr output
+# --------------------------
+
+*.utf8.md
+*.knit.md
+*.html
+*.pdf
+*.docx
+*.Rmd~
+
+# --------------------------
+# Packages / dependencies
+# --------------------------
+
+# Packrat / renv
+packrat/
+renv/library/
+renv/staging/
+renv/cache/
