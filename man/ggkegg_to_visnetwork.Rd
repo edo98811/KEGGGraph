@@ -7,17 +7,11 @@
 ggkegg_to_visnetwork(path_id, organism = "mmu", de_results = NULL)
 }
 \arguments{
+\item{path_id}{KEGG pathway ID (e.g., "hsa04110" or "04110").}
+
 \item{organism}{KEGG organism code (e.g., "hsa" for human, "mmu" for mouse).}
 
-\item{de_results}{A data frame containing differential expression results.}
-
-\item{graph}{A ggkegg graph object.}
-
-\item{value_column}{The name of the column in `de_results` containing values to map to colors (e.g., p-values, log fold changes).}
-
-\item{threshold}{A numeric value specifying the significance threshold for coloring nodes.}
-
-\item{feature_column}{The name of the column in `de_results` containing gene symbols or identifiers, or "rownames" to use row names.}
+\item{de_results}{Named list of differential expression results. Each entry should be a list with elements: de_table (data.frame), value_column (character), feature_column (character), threshold (numeric).}
 }
 \value{
 A visNetwork object representing the pathway with colored nodes based on differential expression results.
