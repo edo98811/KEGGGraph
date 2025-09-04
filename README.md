@@ -13,6 +13,9 @@ devtools::install_github("edoardofilippi/KEGGgraphs")
 ```R
 library(KEGGgraphs)
 
+transcriptomics_res$KEGGID <- ensembl_to_kegg(transcriptomics_res$id, organism = "mouse")
+proteomics_res$KEGGID <- uniprot_to_kegg(proteomics_res$uniprot_id, organism = "mouse")
+
 de_results_list = list(
   trans = list(
     de_table = transcriptomics_res, 
