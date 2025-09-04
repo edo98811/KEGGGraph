@@ -34,7 +34,6 @@ de_results_list = list(
     threshold = 0.2))
 
 print(paste0("testing for: ", pathway, " in ", contrast_fea))
-devtools::load_all("/Users/edoardofilippi/Development/Projects/KEGGgraphs")
 ggkegg_to_visnetwork(pathway, de_results = de_results_list)
 ```
 
