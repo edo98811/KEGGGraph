@@ -80,7 +80,7 @@ ggkegg_to_visnetwork <- function(path_id, organism = "mmu", de_results = NULL) {
   return(
     visNetwork::visNetwork(nodes_df, edges_df, width = "100%", main = pathway_name) %>%
       visNetwork::visPhysics(enabled = FALSE) %>%
-      visNetwork::visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE, selectedBy = "group") %>%
+      visNetwork::visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE, selectedBy = "group") 
       # visNetwork::visLegend(addEdges = legend_elements$edges, useGroups = FALSE) %>% # , addNodes = legend_elements$nodes
       # visNetwork::visGroups(groupname = unique(nodes_df$group)) %>%
       # visNetwork::visLayout(randomSeed = 42)
