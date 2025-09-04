@@ -1,6 +1,6 @@
-Package: KEGGgraphs
+Package: VisKEGG
 Type: Package
-Title: What the Package Does (Title Case)
+Title: Plotting functions for MOVIDA project
 Version: 0.1.0
 Authors@R: c(
     person(
@@ -9,9 +9,26 @@ Authors@R: c(
       role = c("aut", "cre")
     )
   )
-Description: More about what it does (maybe more than one line).
-    Continuation lines should be indented.
-License: What license is it under?
+Description: A package providing functions to generate interactive graphs from KEGG pathways.
+    you can use it to visualize pathways, map de results onto pathways, and explore relationships between genes, proteins, and compounds.
+    There are functions to convert between different ID types (e.g., UniProt to KEGG).
+License: MIT License
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 7.3.2
+Suggests: 
+    testthat (>= 3.0.0)
+    knitr
+VignetteBuilder: knitr
+Config/testthat/edition: 3
+Depends: 
+    R (>= 3.5.0)
+Imports:
+    httr2,
+    jsonlite,
+    xml2,
+    stringr, 
+    AnnotationDbi,
+    org.Hs.eg.db,
+    org.Mm.eg.db,
+
