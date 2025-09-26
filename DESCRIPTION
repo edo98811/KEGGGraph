@@ -4,8 +4,8 @@ Title: Plotting functions for MOVIDA project
 Version: 0.1.0
 Authors@R: c(
     person(
-      "Jane", "Doe",
-      email = "jane@example.com",
+      "Edoardo", "Filippi",
+      email = "edoardo.filippi@uni-mainz.de",
       role = c("aut", "cre")
     )
   )
@@ -31,4 +31,11 @@ Imports:
     AnnotationDbi,
     org.Hs.eg.db,
     org.Mm.eg.db,
+    KEGGREST,
+    visNetwork,
+    ggkegg,
+    xml2,
+    purrr,
+    dplyr,
+    tibble
 

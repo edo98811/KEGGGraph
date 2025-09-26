@@ -11,7 +11,7 @@ test_that("ggkegg_to_visnetwork returns a visNetwork object for human pathways",
 test_that("ggkegg_to_visnetwork returns a visNetwork object for mouse pathways", {
   # skip("integration test")
   for (p in mouse_paths) {
-    result <- ggkegg_to_visnetwork(p, test_de, feature_column = "rownames", organism = "mmu")
+    result <- ggkegg_to_visnetwork(p, test_de, organism = "mmu")
     expect_true(inherits(result, "visNetwork"))
     expect_true("nodes" %in% names(result$x))
     expect_true("edges" %in% names(result$x))

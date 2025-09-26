@@ -39,3 +39,6 @@ ggkegg_to_visnetwork(pathway, de_results = de_results_list)
 
 Example output  
 ![Example KEGGGraph Output](inst/extdata/example_output.png)
+
+
+

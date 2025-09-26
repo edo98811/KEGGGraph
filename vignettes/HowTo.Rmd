@@ -7,10 +7,13 @@ vignette: >
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
+```{r loading-pakcage}
+devtools::load_all("/Users/edoardofilippi/Development/Projects/KEGGgraphs")
+```
 
 ```{r setting-up-fake-data}
-# Human KEGG pathway IDs
 
+# test_de <- read.table(test_path("example_data.csv"))
 human_pathways <- c(
   "hsa04151",  # PI3K–Akt signaling pathway
   "hsa04115",  # p53 signaling pathway
@@ -28,35 +31,93 @@ mouse_pathways <- c(
   "mmu03440"   # Homologous recombination
 )
 
-fake_de <- data.frame(
+test_de <- data.frame(
   logFC = rnorm(7, mean = 0, sd = 2),
-  ensembl_id = c("ENSG00000139618", "ENSG00000157764", "ENSG00000141510", "ENSG00000155657", "ENSG00000171862", 
-                 "ENSG00000198763", "ENSG00000142192"),
-  uniprot_id = c("P38398", "P04637", "P31749", "Q9Y6K9", "P15056", 
-                 "Q9Y243", "P01116"),
-  gene_symbol = c("BRCA2", "TP53", "AKT1", "PIK3CA", "EGFR", 
-                  "PTEN", "KRAS"),
-  gene_symbol_mouse = c("Brca2", "Trp53", "Akt1", "Pik3ca", "Egfr",
-                        "Pten", "Kras"),
   stringsAsFactors = FALSE
 )
 
-fake_de_ensembl <- fake_de
-rownames(fake_de_ensembl) <- fake_de_ensembl$ensembl_id
+generate_test_results <- function(ids) {
+  df <- data.frame(
+    ids = ids,
+    log2FoldChange = rnorm(length(ids), mean = 0, sd = 2),
+    stringsAsFactors = FALSE
+  )
+  rownames(df) <- ids
+  df
+}
+test_de_ensembl <- generate_test_results(
+  ids = c(
+    "ENSG00000139618", "ENSG00000157764", "ENSG00000141510", "ENSG00000155657", "ENSG00000171862", 
+    "ENSG00000198763", "ENSG00000142192"
+  )
+)
+test_de_uniprot <- generate_test_results(
+  ids = c(
+    "P38398", "P04637", "P31749", "Q9Y6K9", "P15056", 
+    "Q9Y243", "P01116"
+  )
+)
+test_de_symbol <- generate_test_results(
+  ids = c(
+    "BRCA2", "TP53", "AKT1", "PIK3CA", "EGFR", 
+    "PTEN", "KRAS"
+  )
+)
+test_de_symbol_mouse <- generate_test_results(
+  ids = c(
+    "Brca2", "Trp53", "Akt1", "Pik3ca", "Egfr",
+    "Pten", "Kras"
+  )
+)
 
-fake_de_uniprot <- fake_de
-rownames(fake_de_uniprot) <- fake_de_uniprot$uniprot_id
-
-fake_de_symbol <- fake_de
-rownames(fake_de_symbol) <- fake_de_symbol$gene_symbol
 ```
 
 
 ```{r convert-ids}
 
+test_de_uniprot$KEGGID <- uniprot_to_kegg(test_de_uniprot$ids, organism = "human")
+test_de_ensembl$KEGGID <- ensembl_to_kegg(test_de_ensembl$ids, organism = "human")
+test_de_symbol$KEGGID <- symbol_to_kegg(test_de_symbol$ids, organism = "human")
+test_de_symbol_mouse$KEGGID <- symbol_to_kegg(test_de_symbol_mouse$ids, organism = "mouse")
+
 ```
 
-```{r}
+```{r createing-de-lists}
 
+
+de_results_list = list(
+  trans = list(
+    de_table = test_de_ensembl, 
+    value_column = "log2FoldChange", 
+    feature_column = "KEGGID", 
+    threshold = 0.2),
+  prot = list(
+    de_table = test_de_uniprot, 
+    value_column = "log2FoldChange", 
+    feature_column = "KEGGID", 
+    threshold = 0.2),
+  metabo = list(
+    de_table = test_de_symbol, 
+    value_column = "log2FoldChange", 
+    feature_column = "KEGGID", 
+    threshold = 0.2))
+
+de_results_single_symbol_mouse = list(
+    metabo = list(
+    de_table = test_de_symbol_mouse, 
+    value_column = "log2FoldChange", 
+    feature_column = "rownames", 
+    threshold = 0.2
+    ))
+
+```
+
+```{r test-package}
+devtools::load_all("/Users/edoardofilippi/Development/Projects/KEGGgraphs")
+for (human_pathway in human_pathways){
+  print(ggkegg_to_visnetwork(human_pathway, de_results = de_results_list))
+}
+
+  print(ggkegg_to_visnetwork("hsa04110", de_results = de_results_list, organism = "human"))
 ```
 

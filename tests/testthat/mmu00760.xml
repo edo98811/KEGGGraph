@@ -677,6 +677,7 @@
     </entry>
     <relation entry1="110" entry2="118" type="ECrel">
         <subtype name="compound" value="167"/>
+        <subtype name="compound" value="181"/>
     </relation>
     <relation entry1="109" entry2="110" type="ECrel">
         <subtype name="compound" value="181"/>

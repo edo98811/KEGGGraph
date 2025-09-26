@@ -1,4 +1,3 @@
-
 #' Transform a ggkegg graph to a visNetwork object.
 #'
 #' @param path_id KEGG pathway ID (e.g., "hsa04110" or "04110").
@@ -12,7 +11,7 @@
 #' @export
 ggkegg_to_visnetwork <- function(path_id, organism = "mmu", de_results = NULL) {
   if (!is_valid_pathway(path_id)) {
-    stop("Invalid KEGG pathway ID format. Must be like 'hsa04110' or '04110'.")
+    stop("Invalid KEGG pathway ID format. Must be like 'hsa:04110' or '04110'.")
   }
 
   # Validate each entry in de_results
@@ -26,17 +25,14 @@ ggkegg_to_visnetwork <- function(path_id, organism = "mmu", de_results = NULL) {
     invisible(
       lapply(names(de_results), function(name) {
         entry <- de_results[[name]]
-        if (!is.list(entry) || !all(c("de_table", "value_column", "feature_column", "threshold") %in% names(entry))) {
-          stop(paste0("Each entry in de_results must be a list with elements: data, value_column, feature_column, threshold (problem in '", name, "')"))
+        if (!is.list(entry) || !all(c("de_table", "value_column", "feature_column") %in% names(entry))) {
+          stop(paste0("Each entry in de_results must be a list with elements: data, value_column, feature_column (problem in '", name, "')"))
         }
         if (!inherits(entry$de_table, "data.frame")) {
           stop(paste0("de_results[['", name, "']]$de_table must be a data frame"))
         }
         if (!is.character(entry$value_column) || !(entry$value_column %in% colnames(entry$de_table))) {
           stop(paste0("de_results[['", name, "']]$value_column must be a column name in de_results[['", name, "']]$de_table"))
-        }
-        if (!is.numeric(entry$threshold) || length(entry$threshold) != 1) {
-          stop(paste0("de_results[['", name, "']]$threshold must be a single numeric value"))
         }
         if (!is.character(entry$feature_column) || !(entry$feature_column %in% c(colnames(entry$de_table), "rownames"))) {
           stop(paste0("de_results[['", name, "']]$feature_column must be a column name in de_results[['", name, "']]$de_table or 'rownames'"))
@@ -50,22 +46,33 @@ ggkegg_to_visnetwork <- function(path_id, organism = "mmu", de_results = NULL) {
     stop("organism must be a single character string")
   }
 
+
+  organism <- to_organism_kegg(organism)
+
+  # first call downloads, later calls use cached version
+  kgml_file <- download_kgml(path_id)
+
+  # 1. Get nodes and edges data frames
+  nodes_df <- parse_kgml_entries(kgml_file)
+  edges_df <- parse_kgml_relations(kgml_file)
+  nodes_df$kegg_ids <- vapply(nodes_df$name, ids_from_nodes_id, FUN.VALUE = character(1))
+
   # Pathway info
-  pathway_name <- paste0("(", path_id, ") ", get_pathway_name(path_id, organism))
+  pathway_name <- paste0("(", path_id, ") ", get_pathway_name(path_id))
   graph <- ggkegg::pathway(path_id)
 
   # ggkegg documentation: https://noriakis.github.io/software/ggkegg/
 
   # 1. Get nodes and edges data frames
-  nodes_df <- get_nodes_df(graph, organism, delete_na = TRUE)
-  edges_df <- get_edges_df(graph)
+  # nodes_df <- get_nodes_df(graph, organism, delete_na = TRUE)
+  # edges_df <- get_edges_df(graph)
 
   # 2. Color and style nodes and edges
   # --- Color based on de results ---
   node_colors <- color_nodes(nodes_df, de_results)
 
   # --- Nodes ---
-  nodes_df <- style_nodes(nodes_df, node_colors)
+  nodes_df <- style_nodes(nodes_df, node_colors, organism)
 
   # --- Edges ---
   edges_df <- style_edges(edges_df)
@@ -78,12 +85,12 @@ ggkegg_to_visnetwork <- function(path_id, organism = "mmu", de_results = NULL) {
 
   # --- 5. Build network with legend ---
   return(
-    visNetwork::visNetwork(nodes_df, edges_df, width = "100%", main = pathway_name) %>%
+    visNetwork::visNetwork(nodes_df, edges_df, main = pathway_name) %>%
       visNetwork::visPhysics(enabled = FALSE) %>%
-      visNetwork::visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE, selectedBy = "group") 
-      # visNetwork::visLegend(addEdges = legend_elements$edges, useGroups = FALSE) %>% # , addNodes = legend_elements$nodes
-      # visNetwork::visGroups(groupname = unique(nodes_df$group)) %>%
-      # visNetwork::visLayout(randomSeed = 42)
+      visNetwork::visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE, selectedBy = "group")
+    # visNetwork::visLegend(addEdges = legend_elements$edges, useGroups = FALSE) %>% # , addNodes = legend_elements$nodes
+    # visNetwork::visGroups(groupname = unique(nodes_df$group)) %>%
+    # visNetwork::visLayout(randomSeed = 42)
   )
 }
 
@@ -113,23 +120,42 @@ ggkegg_to_visnetwork <- function(path_id, organism = "mmu", de_results = NULL) {
 
 
 scale_dimensions <- function(nodes_df, factor = 2) {
+
   # Scale x and y coordinates to make the graph look nicer
-  nodes_df$x <- nodes_df$x * factor
-  nodes_df$y <- -nodes_df$y * factor # Invert y-axis
+  nodes_df$x <- as.numeric(nodes_df$x) * factor
+  nodes_df$y <- - as.numeric(nodes_df$y) * factor # Invert y-axis
 
   return(nodes_df)
 }
 
 
-style_nodes <- function(nodes_df, node_colors) {
+style_nodes <- function(nodes_df, node_colors, organism, delete_na = FALSE) {
+
   # Apply given  node dimensons
-  nodes_df$widthConstraint <- abs(nodes_df$xmax - nodes_df$xmin)
-  nodes_df$heightConstraint <- abs(nodes_df$ymax - nodes_df$ymin)
-  nodes_df$shape <- "box"
+  nodes_df <- nodes_df %>%
+    dplyr::mutate(
+      width = as.numeric(.data$width),
+      heigth = as.numeric(.data$height),
+      shape = dplyr::case_when(
+        .data$graphics_type == "rectangle" ~ "box",
+        .data$graphics_type == "circle" ~ "dot",
+        .data$graphics_type == "roundrectangle" ~ "box",
+        TRUE ~ "box"
+      ),
+      size = ifelse(.data$graphics_type == "circle", 10, NA),
+      widthConstraint = ifelse(.data$graphics_type != "circle", .data$width, NA),
+      heightConstraint = ifelse(.data$graphics_type != "circle", .data$height, NA)
+        ) %>%
+    dplyr::filter(.data$type != "group") %>%
+    dplyr::mutate(
+      converted_id = convert_id(organism),
+      converted_map = convert_id("pathway")
+    )
+
 
   # Assign backfround
   color_vec <- rep("white", nrow(nodes_df))
-  idx <- match(nodes_df$kegg_ids, names(node_colors))
+  idx <- match(nodes_df$name, names(node_colors))
   color_vec[!is.na(idx)] <- node_colors[idx[!is.na(idx)]]
   nodes_df$color.background <- color_vec
   nodes_df$color.highlight.border <- color_vec
@@ -143,22 +169,28 @@ style_nodes <- function(nodes_df, node_colors) {
   nodes_df$title <- paste0(
     "<p><b>", nodes_df$type, "</b><br/>",
     "ID: ", nodes_df$kegg_ids, "<br/>",
-    "<a href='https://www.kegg.jp/entry/", nodes_df$name, "' target='_blank'>Wiew on KEGG</a></p>",
+    "<a href='", nodes_df$link, "' target='_blank'>View on KEGG</a></p>",
     "Name: ", nodes_df$name, "<br/>"
   )
+
   # nodes_df$label <- nodes_df$graphics_name
   nodes_df$group <- nodes_df$type
+
+  # Delete nodes without label
+  if (delete_na) {
+    nodes_df$id[is.na(nodes_df$id)] <- nodes_df$converted_map
+  }
+
 
   return(nodes_df)
 }
 
 style_edges <- function(edges_df) {
-  edges_df$width <- 2
+  edges_df$width <- 1.5
   edges_df$color <- "gray"
   edges_df$arrows <- "middle"
 
   edges_df <- edges_df %>%
-    dplyr::rowwise() %>%
     dplyr::mutate(
       # Set color by main type
       color = dplyr::case_when(
@@ -168,28 +200,8 @@ style_edges <- function(edges_df) {
         type == "PCrel" ~ "purple",
         TRUE ~ "gray"
       ),
-
-      # Set dashes or solid based on subtype
-      dashes = dplyr::case_when(
-        subtype_name %in% c("inhibition", "repression", "dephosphorylation") ~ TRUE,
-        TRUE ~ FALSE
-      ),
-
-      # Set arrow type
-      arrows = dplyr::case_when(
-        subtype_name %in% c("activation", "expression", "phosphorylation") ~ "to",
-        subtype_name %in% c("inhibition", "repression", "dephosphorylation") ~ "to;middle;from",
-        subtype_name %in% c("binding/association", "compound", "state change") ~ "none",
-        TRUE ~ "to"
-      ),
-
-      # Optionally, width by importance
-      width = dplyr::case_when(
-        subtype_name %in% c("activation", "inhibition") ~ 3,
-        TRUE ~ 1.5
-      )
-    ) %>%
-    dplyr::ungroup()
+      label = ifelse(value == "+p", "+p", NA_character_),
+    )
 
   return(edges_df)
 }
@@ -202,7 +214,7 @@ color_nodes <- function(nodes_df, de_results_list) {
     de_results <- entry$de_table
     value_column <- entry$value_column
     feature_column <- entry$feature_column
-    threshold <- entry$threshold
+    # threshold <- entry$threshold
 
     # --- Row check ---
     if (feature_column == "rownames") {
@@ -211,11 +223,12 @@ color_nodes <- function(nodes_df, de_results_list) {
       stop(paste("Column", feature_column, "not found in de_results"))
     }
 
-    # --- Default color for nodes below threshold ---
-    node_colors <- "white" # Default color
+    # --- Default color ---
     elements_to_color <- de_results %>%
       # dplyr::filter(.data[[value_column]] < threshold) %>%
+      dplyr::filter(!is.na(.data[[feature_column]])) %>%
       dplyr::select(dplyr::all_of(c(feature_column, value_column)))
+    node_colors <- setNames(rep("white", nrow(nodes_df)), nodes_df$kegg_ids) # Default color)
 
     # --- Override with DE table colors ---
     if (!is.null(de_results) && value_column %in% colnames(de_results)) {
@@ -254,7 +267,6 @@ color_nodes <- function(nodes_df, de_results_list) {
     } else {
       message("de_results not being mapped on graph, if provided check that column names are correct")
     }
-
     return(node_colors)
   })
   colors_merged <- merge_color_lists(colors_mapping)
@@ -301,56 +313,129 @@ create_colorbar_png <- function(filename = "colorbar.png",
   invisible(filename)
 }
 
+# cache environment to avoid re-downloading
+.kegg_cache <- new.env(parent = emptyenv())
 
+#' Convert KEGG IDs to human-readable names
+#'
+#' @param ids Character vector of KEGG identifiers (e.g. "eco:b4025", "cpd:C00022")
+#' @param org KEGG database/organism code (e.g. "eco", "hsa", "compound", "pathway").
+#' Defaults to "eco".
+#'
+#' @return A character vector with mapped descriptions (NA if unknown).
+#' @examples
+#' \dontrun{
+#'   convert_id(c("eco:b4025", "eco:b1779"), org = "eco")
+#' }
+#' @export
+convert_id <- function(ids, org = "eco") {
+  if (!exists(".kegg_cache", envir = .GlobalEnv)) {
+    assign(".kegg_cache", new.env(parent = emptyenv()), envir = .GlobalEnv)
+  }
+  cache <- get(".kegg_cache", envir = .GlobalEnv)
 
-get_nodes_df <- function(graph, organism, delete_na = TRUE) {
-  # Convert KEGG IDs to gene symbols for better readability
+  if (!exists(org, envir = cache)) {
+    url <- paste0("https://rest.kegg.jp/list/", org)
+    resp <- httr::GET(url)
+    if (httr::http_error(resp)) stop("Failed to fetch KEGG list for org: ", org)
 
-  graph <- graph %>%
-    dplyr::mutate(
-      converted_id = ggkegg::convert_id(organism),
-      converted_map = ggkegg::convert_id("pathway")
-    )
+    txt <- httr::content(resp, as = "text", encoding = "UTF-8")
+    tbl <- data.table::fread(text = txt, header = FALSE, sep = "\t")
 
-  # Make sure node names are unique
-  igraph::V(graph)$name_old <- igraph::V(graph)$name
-  igraph::V(graph)$name <- make.unique(igraph::V(graph)$name)
+    # KEGG returns 2 or 4 columns
+    if (ncol(tbl) == 2) {
+      colnames(tbl) <- c("id", "desc")
+      tbl <- tbl[, c("id", "desc")]
+    } else if (ncol(tbl) >= 4) {
+      colnames(tbl)[c(1,4)] <- c("id","desc")
+      tbl <- tbl[, c("id","desc")]
+    } else {
+      stop("Unexpected KEGG table format")
+    }
 
-  # Extract nodes + edges from igraph/tidygraph
-  nodes_df <- igraph::as_data_frame(graph, what = "vertices")
-  nodes_df$kegg_ids <- vapply(nodes_df$name_old, ids_from_nodes_id, FUN.VALUE = character(1))
-
-  nodes_df <- nodes_df %>%
-    dplyr::filter(!grepl("undefined", rownames(.)))
-
-  # If nodes_df does not have 'id', set it to 'name'
-  if (!("id" %in% colnames(nodes_df))) {
-    # nodes_df$id <- make.unique(nodes_df$converted_id, sep = ".")
-    nodes_df$label <- make.unique(nodes_df$converted_id, sep = ".")
-    nodes_df$id <- nodes_df$name
+    assign(org, setNames(tbl$desc, tbl$id), envir = cache)
   }
 
-  # Delete nodes without label
-  if (delete_na) {
-    nodes_df <- nodes_df %>%
-      dplyr::filter(!is.na(.data$graphics_name))
-  }
-
-  return(nodes_df)
+  lookup <- get(org, envir = cache)
+  unname(lookup[ids])
 }
 
-get_edges_df <- function(graph) {
-  edges_df <- igraph::as_data_frame(graph, what = "edges") # %>%
-  # dplyr::filter(!grepl("undefined", .data$from) & !grepl("undefined", .data$to))
 
-  # Ensure 'from' and 'to' columns exist
-  if (!("from" %in% colnames(edges_df) && "to" %in% colnames(edges_df))) {
-    colnames(edges_df)[1:2] <- c("from", "to")
-  }
+parse_kgml_entries <- function(file) {
+  # read the KGML file
+  doc <- read_xml(file)
 
-  return(edges_df)
+  # find all entry nodes
+  entries <- xml_find_all(doc, ".//entry")
+  graphics <- xml_find_all(entries, ".//graphics")
+
+  # extract attributes into a data.frame
+  df <- tibble(
+    id = xml_attr(entries, "id"),
+    name = xml_attr(entries, "name"),
+    type = xml_attr(entries, "type"),
+    link = xml_attr(entries, "link"),
+    reaction = xml_attr(entries, "reaction"),
+    graphics_name = xml_attr(graphics, "name"),
+    label = xml_attr(graphics, "name"), # for visNetwork
+    fgcolor = xml_attr(graphics, "fgcolor"),
+    bgcolor = xml_attr(graphics, "bgcolor"),
+    graphics_type = xml_attr(graphics, "type"),
+    x = xml_attr(graphics, "x"),
+    y = xml_attr(graphics, "y"),
+    width = xml_attr(graphics, "width"),
+    height = xml_attr(graphics, "height")
+  )
+  #     <entry id="184" name="ko:K15359 ko:K18276" type="ortholog" reaction="rn:R09472"
+  # link="https://www.kegg.jp/dbget-bin/www_bget?K15359+K18276">
+  # <graphics name="K15359..." fgcolor="#000000" bgcolor="#FFFFFF"
+  #      type="rectangle" x="303" y="561" width="46" height="17"/>
+
+  return(df)
 }
 
+parse_kgml_relations <- function(file) {
+  doc <- read_xml(file)
+
+  rels <- xml_find_all(doc, ".//relation")
+
+  purrr::map_dfr(rels, function(rel) {
+    entry1 <- xml_attr(rel, "entry1")
+    entry2 <- xml_attr(rel, "entry2")
+    type <- xml_attr(rel, "type")
+    subnodes <- xml_find_all(rel, ".//subtype")
+
+    if (length(subnodes) == 0) {
+      tibble(
+        from = entry1,
+        to = entry2,
+        type = type,
+        name = NA_character_,
+        value = NA_character_
+      )
+    } else {
+      tibble(
+        from = entry1,
+        to = entry2,
+        type = type,
+        subtype = xml_attr(subnodes, "name"),
+        value = xml_attr(subnodes, "value")
+      )
+    }
+  })
+}
+
+# </entry>
+# <entry id="60" name="hsa:991" type="gene"
+#     link="https://www.kegg.jp/dbget-bin/www_bget?hsa:991">
+#     <graphics name="CDC20, CDC20A, OOMD14, OZEMA14, bA276H19.3, p55CDC" fgcolor="#000000" bgcolor="#BFFFBF"
+#          type="rectangle" x="981" y="409" width="46" height="17"/>
+# </entry>
+
+#     <relation entry1="64" entry2="66" type="PPrel">
+#     <subtype name="activation" value="--&gt;"/>
+#     <subtype name="dephosphorylation" value="-p"/>
+# </relation>
 #
 # edges_df <- edges_df %>%
 #   dplyr::mutate(
@@ -393,3 +478,50 @@ get_edges_df <- function(graph) {
 #       TRUE ~ "lightgray" # fallback
 #     )
 #   )
+
+
+#' Download and cache KEGG KGML files.
+#'
+#'
+#' @param pathway_id KEGG pathway ID (e.g., "hsa04110").
+#' @param cache_dir Directory to store cached KGML files (default: "kgml_cache").
+#' @return Path to the cached KGML file.
+#' @importFrom httr GET content http_error
+#' @importFrom xml2 read_xml
+download_kgml <- function(pathway_id, cache_dir = "kgml_cache") {
+  # Ensure cache dir exists
+  if (!dir.exists(cache_dir)) {
+    dir.create(cache_dir, recursive = TRUE)
+  }
+
+  # Local file path
+  file_path <- file.path(cache_dir, paste0(pathway_id, ".xml"))
+
+  # If already cached, return path
+  if (file.exists(file_path)) {
+    message("Using cached file: ", file_path)
+    return(file_path)
+  }
+
+  # KEGG REST API URL
+  url <- paste0("https://rest.kegg.jp/get/", pathway_id, "/kgml")
+
+  # Download
+  resp <- httr::GET(url)
+
+  if (httr::http_error(resp)) {
+    stop("Failed to download KGML for pathway: ", pathway_id)
+  }
+
+  writeBin(httr::content(resp, as = "text", encoding = "UTF-8"), file_path)
+  message("Downloaded and cached: ", file_path)
+
+  return(file_path)
+}
+
+capital = 15000
+year = 10000
+for (i in 1:10) {
+capital = capital*1 + year
+}
+print(capital)
